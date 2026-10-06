@@ -52,6 +52,22 @@ function startViewer(container) {
     resize();
 
     let activeModel;
+    const componentColors = {
+        base: container.dataset.baseColor || container.dataset.color || '#c9b896',
+        button: container.dataset.buttonColor || container.dataset.color || '#c9b896',
+        name: container.dataset.nameColor || container.dataset.color || '#c9b896',
+    };
+    const getComponent = (object) => {
+        let current = object;
+        while (current && current !== activeModel?.parent) {
+            const name = current.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (name.includes('button') || name.includes('tombol')) return 'button';
+            if (name.includes('name') || name.includes('text') || name.includes('tulisan')) return 'name';
+            if (name.includes('base') || name.includes('body')) return 'base';
+            current = current.parent;
+        }
+        return 'base';
+    };
     const applyColor = (hex) => {
         if (!activeModel) return;
         activeModel.traverse((child) => {
@@ -64,7 +80,26 @@ function startViewer(container) {
         });
     };
 
+    const applyComponentColors = (colors) => {
+        Object.assign(componentColors, colors);
+        if (!activeModel) return;
+        if (format !== '3mf') {
+            applyColor(componentColors.base);
+            return;
+        }
+        activeModel.traverse((child) => {
+            if (!child.isMesh) return;
+            const color = componentColors[getComponent(child)];
+            const materials = Array.isArray(child.material) ? child.material : [child.material];
+            materials.forEach((material) => {
+                material.color?.set(color);
+                material.needsUpdate = true;
+            });
+        });
+    };
+
     container.addEventListener('model-color-change', (event) => applyColor(event.detail));
+    container.addEventListener('component-color-change', (event) => applyComponentColors(event.detail));
     const format = container.dataset.modelFormat?.toLowerCase();
     const loader = format === '3mf' ? new ThreeMFLoader() : new STLLoader();
     loader.load(
@@ -95,13 +130,14 @@ function startViewer(container) {
                     if (format === '3mf') {
                         const materials = Array.isArray(child.material) ? child.material : [child.material];
                         materials.forEach((material) => {
-                            material.color?.set(container.dataset.color || '#c9b896');
+                            material.color?.set(componentColors[getComponent(child)]);
                             material.roughness = 0.5;
                         });
                     }
                 }
             });
             scene.add(activeModel);
+            applyComponentColors(componentColors);
             container.querySelector('.viewer-loading')?.remove();
             controls.target.set(0, 0, 0);
             controls.update();

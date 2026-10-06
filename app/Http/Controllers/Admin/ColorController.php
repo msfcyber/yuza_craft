@@ -22,7 +22,7 @@ class ColorController extends Controller
 
     public function destroy(Color $color): RedirectResponse
     {
-        abort_if($color->variants()->exists(), 422, 'Warna yang sudah digunakan produk tidak dapat dihapus.');
+        abort_if($color->variants()->exists() || $color->componentVariants()->exists(), 422, 'Warna yang sudah digunakan produk tidak dapat dihapus.');
         $color->update(['is_active' => false]);
 
         return back()->with('success', 'Warna dinonaktifkan.');

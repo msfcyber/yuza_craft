@@ -16,6 +16,8 @@ Route::get('/products/{product:slug}', [StorefrontController::class, 'show'])->n
 Route::get('/products/{product:slug}/model', [StorefrontController::class, 'model'])->name('products.model');
 Route::get('/checkout/{variant}', [CheckoutController::class, 'create'])->name('checkout.create');
 Route::post('/checkout/{variant}', [CheckoutController::class, 'store'])->name('checkout.store');
+Route::get('/checkout/custom/{product:slug}', [CheckoutController::class, 'createCustom'])->name('checkout.custom.create');
+Route::post('/checkout/custom/{product:slug}', [CheckoutController::class, 'storeCustom'])->name('checkout.custom.store');
 Route::get('/orders/confirmation/{code}', [TrackingController::class, 'confirmation'])->name('orders.confirmation');
 Route::get('/track', function (Request $request) {
     $code = trim((string) $request->query('code', ''));

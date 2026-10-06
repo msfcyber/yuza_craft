@@ -21,4 +21,9 @@ class Color extends Model
     {
         return $this->hasMany(ProductVariant::class);
     }
+
+    public function componentVariants(): HasMany
+    {
+        return $this->hasMany(ProductComponentVariant::class);
+    }
 }

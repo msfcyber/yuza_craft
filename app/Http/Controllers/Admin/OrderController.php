@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\ProductComponentVariant;
 use App\Models\ProductVariant;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -52,7 +53,24 @@ class OrderController extends Controller
             }
 
             if ($data['status'] === 'cancelled' && $oldStatus !== 'cancelled') {
-                foreach ($lockedOrder->items->where('fulfillment_type', 'ready') as $item) {
+                foreach ($lockedOrder->items as $item) {
+                    if ($item->customization) {
+                        foreach ($item->customization['components'] ?? [] as $component) {
+                            if ($component['availability'] === 'ready' && isset($component['component_variant_id'])) {
+                                ProductComponentVariant::query()
+                                    ->lockForUpdate()
+                                    ->find($component['component_variant_id'])
+                                    ?->increment('stock', $item->quantity);
+                            }
+                        }
+
+                        continue;
+                    }
+
+                    if ($item->fulfillment_type !== 'ready') {
+                        continue;
+                    }
+
                     if ($item->product_variant_id) {
                         $variant = ProductVariant::query()->lockForUpdate()->find($item->product_variant_id);
                         $variant?->increment('stock', $item->quantity);

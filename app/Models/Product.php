@@ -11,15 +11,20 @@ class Product extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['name', 'slug', 'description', 'price', 'image_path', 'model_path', 'model_format', 'is_active'];
+    protected $fillable = ['name', 'slug', 'description', 'price', 'image_path', 'model_path', 'model_format', 'is_active', 'customization_type', 'name_max_length'];
 
     protected function casts(): array
     {
-        return ['price' => 'integer', 'is_active' => 'boolean'];
+        return ['price' => 'integer', 'is_active' => 'boolean', 'name_max_length' => 'integer'];
     }
 
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);
+    }
+
+    public function componentVariants(): HasMany
+    {
+        return $this->hasMany(ProductComponentVariant::class);
     }
 }

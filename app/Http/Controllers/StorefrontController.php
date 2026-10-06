@@ -23,9 +23,19 @@ class StorefrontController extends Controller
     public function show(Product $product): View
     {
         abort_unless($product->is_active, 404);
-        $product->load(['variants' => fn ($query) => $query->whereHas('color', fn ($colors) => $colors->where('is_active', true))->with('color')]);
+        $product->load([
+            'variants' => fn ($query) => $query->whereHas('color', fn ($colors) => $colors->where('is_active', true))->with('color'),
+            'componentVariants' => fn ($query) => $query->where('is_active', true)->whereHas('color', fn ($colors) => $colors->where('is_active', true))->with('color'),
+        ]);
+        $clickerOptions = collect(['base', 'button', 'name'])->mapWithKeys(fn (string $component) => [
+            $component => $product->componentVariants
+                ->where('component', $component)
+                ->filter(fn ($option) => $option->availability === 'po' || $option->stock > 0)
+                ->values(),
+        ]);
+        $clickerAvailable = $clickerOptions->every(fn ($options) => $options->isNotEmpty());
 
-        return view('storefront.show', compact('product'));
+        return view('storefront.show', compact('product', 'clickerOptions', 'clickerAvailable'));
     }
 
     public function model(Product $product): BinaryFileResponse

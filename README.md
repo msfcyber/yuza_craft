@@ -59,6 +59,12 @@ Jangan gunakan mode log di produksi.
 
 File STL/3MF disimpan pada storage privat dan disajikan melalui route produk. Gambar produk disimpan pada public disk. Batas aplikasi untuk file model adalah 50 MB; sesuaikan `upload_max_filesize` dan `post_max_size` PHP bila konfigurasi server lebih rendah.
 
+## Clicker custom
+
+Untuk clicker, tandai produk sebagai tipe **Clicker**, aktifkan kombinasi warna/stok untuk komponen base, tombol, dan tulisan, lalu tentukan batas karakter nama (1–24). Pesanan menyimpan teks, panjang karakter, warna setiap komponen, dan snapshot status/estimasi sebagai data produksi. Harga saat ini tetap harga dasar produk untuk semua pilihan.
+
+Preview pewarnaan per bagian bekerja paling baik dengan 3MF multi-part yang memisahkan mesh bernama `base` dan `button` (nama mesh yang memuat kata tersebut juga dikenali). STL satu bagian hanya dapat diwarnai sebagai satu objek. Nama custom dan warnanya tercatat serta ditampilkan sebagai pratinjau teks; file manufaktur tetap perlu memiliki area emboss yang sesuai dengan model clicker fisik.
+
 ## Pemeriksaan
 
 ```bash

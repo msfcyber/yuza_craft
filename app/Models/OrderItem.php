@@ -10,11 +10,11 @@ class OrderItem extends Model
 {
     use HasFactory;
 
-    protected $fillable = ['order_id', 'product_variant_id', 'product_name', 'color_name', 'fulfillment_type', 'quantity', 'unit_price', 'subtotal', 'lead_days'];
+    protected $fillable = ['order_id', 'product_variant_id', 'product_name', 'color_name', 'fulfillment_type', 'quantity', 'unit_price', 'subtotal', 'lead_days', 'customization'];
 
     protected function casts(): array
     {
-        return ['quantity' => 'integer', 'unit_price' => 'integer', 'subtotal' => 'integer', 'lead_days' => 'integer'];
+        return ['quantity' => 'integer', 'unit_price' => 'integer', 'subtotal' => 'integer', 'lead_days' => 'integer', 'customization' => 'array'];
     }
 
     public function order(): BelongsTo
