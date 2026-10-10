@@ -59,6 +59,7 @@ function startViewer(container) {
     let keycapButtonBounds;
     let keycapNameBounds;
     let keycapTemplateUnitWidth = 0;
+    const geometrySmallShells = new WeakMap();
     let customName = container.dataset.customName || '';
     const keycapGenerator = container.dataset.keycapGenerator === 'true';
     const format = container.dataset.modelFormat?.toLowerCase();
@@ -200,11 +201,150 @@ function startViewer(container) {
         return glyph;
     };
 
-    const cloneKeycapTemplate = (character) => {
+    const getSmallestConnectedShell = (geometry) => {
+        if (geometrySmallShells.has(geometry)) {
+            return geometrySmallShells.get(geometry);
+        }
+        const sourceIndex = geometry.index;
+        if (!sourceIndex || sourceIndex.count < 6) {
+            geometrySmallShells.set(geometry, null);
+
+            return null;
+        }
+
+        const vertexCount = geometry.getAttribute('position').count;
+        const parents = new Uint32Array(vertexCount);
+        parents.forEach((_, index) => {
+            parents[index] = index;
+        });
+
+        const findRoot = (vertexIndex) => {
+            let root = vertexIndex;
+            while (parents[root] !== root) {
+                parents[root] = parents[parents[root]];
+                root = parents[root];
+            }
+
+            return root;
+        };
+
+        const joinVertices = (firstIndex, secondIndex) => {
+            const firstRoot = findRoot(firstIndex);
+            const secondRoot = findRoot(secondIndex);
+
+            if (firstRoot !== secondRoot) {
+                parents[firstRoot] = secondRoot;
+            }
+        };
+
+        for (let index = 0; index < sourceIndex.count; index += 3) {
+            const first = sourceIndex.getX(index);
+            const second = sourceIndex.getX(index + 1);
+            const third = sourceIndex.getX(index + 2);
+            joinVertices(first, second);
+            joinVertices(second, third);
+        }
+
+        const componentFaces = new Map();
+        for (let index = 0; index < sourceIndex.count; index += 3) {
+            const root = findRoot(sourceIndex.getX(index));
+            componentFaces.set(root, (componentFaces.get(root) ?? 0) + 1);
+        }
+
+        const components = [...componentFaces.entries()].sort((first, second) => first[1] - second[1]);
+        if (components.length < 2 || components[0][1] >= components.at(-1)[1] * 0.4) {
+            geometrySmallShells.set(geometry, null);
+
+            return null;
+        }
+
+        const smallRoot = components[0][0];
+        const vertexIndexes = [];
+        const triangleIndexes = [];
+        for (let vertexIndex = 0; vertexIndex < vertexCount; vertexIndex += 1) {
+            if (findRoot(vertexIndex) === smallRoot) {
+                vertexIndexes.push(vertexIndex);
+            }
+        }
+
+        for (let index = 0; index < sourceIndex.count; index += 3) {
+            if (findRoot(sourceIndex.getX(index)) === smallRoot) {
+                triangleIndexes.push(index);
+            }
+        }
+
+        const shell = { vertexIndexes, triangleIndexes };
+        geometrySmallShells.set(geometry, shell);
+
+        return shell;
+    };
+
+    const splitHangerFromBaseGeometry = (geometry) => {
+        const shell = getSmallestConnectedShell(geometry);
+        if (!shell) return null;
+
+        const sourceIndex = geometry.index;
+        const smallShellTriangles = new Set(shell.triangleIndexes);
+        const bodyIndices = [];
+        const hangerIndices = [];
+        for (let index = 0; index < sourceIndex.count; index += 3) {
+            const target = smallShellTriangles.has(index) ? hangerIndices : bodyIndices;
+            target.push(sourceIndex.getX(index), sourceIndex.getX(index + 1), sourceIndex.getX(index + 2));
+        }
+
+        const createGeometry = (indices, mirroredToLeft = false) => {
+            const splitGeometry = geometry.clone();
+            splitGeometry.setIndex(indices);
+            splitGeometry.clearGroups();
+
+            if (mirroredToLeft) {
+                const positions = splitGeometry.getAttribute('position');
+                if (!geometry.boundingBox) {
+                    geometry.computeBoundingBox();
+                }
+                const centerX = (geometry.boundingBox.min.x + geometry.boundingBox.max.x) / 2;
+
+                shell.vertexIndexes.forEach((vertexIndex) => {
+                    positions.setX(vertexIndex, centerX * 2 - positions.getX(vertexIndex));
+                });
+                positions.needsUpdate = true;
+
+                const index = splitGeometry.index;
+                for (let offset = 0; offset < index.count; offset += 3) {
+                    const second = index.getX(offset + 1);
+                    index.setX(offset + 1, index.getX(offset + 2));
+                    index.setX(offset + 2, second);
+                }
+                index.needsUpdate = true;
+            }
+
+            splitGeometry.computeVertexNormals();
+            const bounds = new THREE.Box3();
+            const positions = splitGeometry.getAttribute('position');
+            indices.forEach((vertexIndex) => {
+                bounds.expandByPoint(new THREE.Vector3().fromBufferAttribute(positions, vertexIndex));
+            });
+            splitGeometry.boundingBox = bounds;
+            splitGeometry.boundingSphere = bounds.getBoundingSphere(new THREE.Sphere());
+
+            return splitGeometry;
+        };
+
+        return {
+            body: createGeometry(bodyIndices),
+            hanger: createGeometry(hangerIndices, true),
+        };
+    };
+
+    const cloneKeycapTemplate = (character, keepsHanger) => {
         const key = new THREE.Group();
         key.name = `generated-keycap-${character}`;
         const model = keycapTemplate.clone(true);
         model.traverse((child) => {
+            if (child.userData.keycapHanger) {
+                child.visible = keepsHanger;
+            }
+
             const component = getComponent(child, model);
 
             if (component === 'name') {
@@ -248,7 +388,31 @@ function startViewer(container) {
         keycapTemplate.add(template);
         keycapTemplate.updateMatrixWorld(true);
 
-        const initialBounds = new THREE.Box3().setFromObject(keycapTemplate);
+        const attachmentCandidateMeshes = [];
+        keycapTemplate.traverse((child) => {
+            if (child.isMesh && getComponent(child, keycapTemplate) !== 'name') {
+                attachmentCandidateMeshes.push(child);
+            }
+        });
+        attachmentCandidateMeshes.forEach((baseMesh) => {
+            const splitGeometry = splitHangerFromBaseGeometry(baseMesh.geometry);
+            if (!splitGeometry) return;
+
+            baseMesh.geometry = splitGeometry.body;
+            const hangerMesh = baseMesh.clone(false);
+            hangerMesh.name = 'hanger-attachment';
+            hangerMesh.geometry = splitGeometry.hanger;
+            hangerMesh.userData.keycapHanger = true;
+            baseMesh.parent.add(hangerMesh);
+        });
+        keycapTemplate.updateMatrixWorld(true);
+
+        const initialBounds = new THREE.Box3();
+        keycapTemplate.traverse((child) => {
+            if (child.isMesh && ! child.userData.keycapHanger) {
+                initialBounds.expandByObject(child);
+            }
+        });
         const initialSize = initialBounds.getSize(new THREE.Vector3());
         const center = initialBounds.getCenter(new THREE.Vector3());
         const initialWidth = Math.max(initialSize.x, initialSize.z);
@@ -266,6 +430,12 @@ function startViewer(container) {
         keycapTemplate.position.set(-center.x * scale, -initialBounds.min.y * scale, -center.z * scale);
         keycapTemplate.updateMatrixWorld(true);
         keycapTemplateBounds = new THREE.Box3().setFromObject(keycapTemplate);
+        const keycapBodyBounds = new THREE.Box3();
+        keycapTemplate.traverse((child) => {
+            if (child.isMesh && ! child.userData.keycapHanger) {
+                keycapBodyBounds.expandByObject(child);
+            }
+        });
         keycapButtonBounds = new THREE.Box3();
         keycapNameBounds = new THREE.Box3();
         keycapTemplate.traverse((child) => {
@@ -285,7 +455,7 @@ function startViewer(container) {
         if (keycapNameBounds.isEmpty()) {
             keycapNameBounds = null;
         }
-        const normalizedSize = keycapTemplateBounds.getSize(new THREE.Vector3());
+        const normalizedSize = keycapBodyBounds.getSize(new THREE.Vector3());
         keycapTemplateUnitWidth = Math.max(normalizedSize.x, normalizedSize.z);
 
         return true;
@@ -366,7 +536,7 @@ function startViewer(container) {
             const keyPosition = index * stride - (totalWidth - keyWidth) / 2;
 
             if (keycapTemplate) {
-                const key = cloneKeycapTemplate(character);
+                const key = cloneKeycapTemplate(character, index === 0);
                 key.scale.multiplyScalar(keyWidth / keycapTemplateUnitWidth);
                 key.position.x += keyPosition;
                 keycapModel.add(key);
