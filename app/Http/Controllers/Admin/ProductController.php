@@ -73,7 +73,7 @@ class ProductController extends Controller
             'price' => ['required', 'integer', 'min:1000', 'max:100000000'],
             'is_active' => ['nullable', 'boolean'],
             'customization_type' => ['required', 'in:standard,clicker'],
-            'name_max_length' => ['required_if:customization_type,clicker', 'integer', 'min:1', 'max:24'],
+            'name_max_length' => ['required_if:customization_type,clicker', 'integer', 'min:1', 'max:10'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'model_file' => [
                 'nullable',
@@ -107,10 +107,7 @@ class ProductController extends Controller
             'component_variants' => ['nullable', 'array'],
             'component_variants.*.*.component' => ['required', 'in:base,button,name'],
             'component_variants.*.*.color_id' => ['required', 'integer', 'exists:colors,id'],
-            'component_variants.*.*.is_active' => ['required', 'boolean'],
-            'component_variants.*.*.availability' => ['required', 'in:ready,po'],
-            'component_variants.*.*.stock' => ['nullable', 'integer', 'min:0', 'max:100000'],
-            'component_variants.*.*.lead_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'component_variants.*.*.is_active' => ['nullable', 'boolean'],
         ]);
     }
 
@@ -143,7 +140,7 @@ class ProductController extends Controller
             'price' => $data['price'],
             'is_active' => $request->boolean('is_active'),
             'customization_type' => $data['customization_type'],
-            'name_max_length' => $data['customization_type'] === 'clicker' ? (int) $data['name_max_length'] : 8,
+            'name_max_length' => $data['customization_type'] === 'clicker' ? min(10, (int) $data['name_max_length']) : 8,
             'image_path' => $imagePath,
             'model_path' => $modelPath,
             'model_format' => $modelFormat,
@@ -167,18 +164,18 @@ class ProductController extends Controller
     private function syncComponentVariants(Product $product, array $components): void
     {
         $product->componentVariants()->update(['is_active' => false]);
+        $availableColorIds = $product->variants()->pluck('color_id')->all();
 
         foreach ($components as $options) {
             foreach ($options as $data) {
-                $isActive = (bool) $data['is_active'];
+                if (! in_array((int) $data['color_id'], $availableColorIds, true)) {
+                    continue;
+                }
+
+                $isActive = (bool) ($data['is_active'] ?? false);
                 $product->componentVariants()->updateOrCreate(
                     ['component' => $data['component'], 'color_id' => $data['color_id']],
-                    [
-                        'availability' => $data['availability'],
-                        'stock' => $data['availability'] === 'ready' ? (int) ($data['stock'] ?? 0) : 0,
-                        'lead_days' => $data['availability'] === 'po' ? (int) ($data['lead_days'] ?? 14) : 14,
-                        'is_active' => $isActive,
-                    ],
+                    ['is_active' => $isActive],
                 );
             }
         }

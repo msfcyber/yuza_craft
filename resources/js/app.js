@@ -53,6 +53,18 @@ if (clickerForm) {
     const nameInput = clickerForm.querySelector('#custom-name');
     const namePreview = clickerForm.querySelector('#custom-name-preview');
     const nameLength = clickerForm.querySelector('#name-length');
+    const updateNamePreview = () => {
+        const characters = Array.from(nameInput.value.normalize('NFC').replace(/[^\p{L}\p{N}]/gu, ''));
+        const value = characters.slice(0, nameInput.maxLength).join('');
+        nameInput.value = value;
+
+        if (namePreview) namePreview.textContent = value || 'Nama kamu';
+        if (nameLength) nameLength.textContent = String([...value].length);
+        if (viewer) {
+            viewer.dataset.customName = value;
+            viewer.dispatchEvent(new CustomEvent('keycap-name-change', { detail: value }));
+        }
+    };
 
     const updateViewerColors = () => {
         const colors = {};
@@ -75,12 +87,8 @@ if (clickerForm) {
         input.addEventListener('change', updateViewerColors);
     });
 
-    nameInput?.addEventListener('input', () => {
-        const value = nameInput.value.trim();
-        if (namePreview) namePreview.textContent = value || 'Nama kamu';
-        if (nameLength) nameLength.textContent = String([...nameInput.value].length);
-        if (viewer) viewer.dataset.customName = value;
-    });
+    nameInput?.addEventListener('input', updateNamePreview);
 
+    updateNamePreview();
     updateViewerColors();
 }

@@ -73,17 +73,31 @@ class DatabaseSeeder extends Seeder
                 'name_max_length' => 8,
             ],
         );
-        $componentAvailability = [
-            'base' => ['Sandstone' => ['ready', 8, 14], 'Forest' => ['ready', 4, 14], 'Ink' => ['po', 0, 10], 'Clay' => ['po', 0, 12]],
-            'button' => ['Sandstone' => ['ready', 6, 14], 'Forest' => ['po', 0, 12], 'Ink' => ['ready', 5, 14], 'Clay' => ['ready', 3, 14]],
-            'name' => ['Sandstone' => ['ready', 10, 14], 'Forest' => ['ready', 5, 14], 'Ink' => ['ready', 4, 14], 'Clay' => ['po', 0, 11]],
+        $clickerVariants = [
+            'Sandstone' => ['ready', 8, 14],
+            'Forest' => ['ready', 4, 14],
+            'Ink' => ['po', 0, 10],
+            'Clay' => ['po', 0, 12],
         ];
 
-        foreach ($componentAvailability as $component => $options) {
-            foreach ($options as $colorName => [$availability, $stock, $leadDays]) {
+        foreach ($clickerVariants as $colorName => [$availability, $stock, $leadDays]) {
+            $clicker->variants()->updateOrCreate(
+                ['color_id' => $colors[$colorName]->id],
+                ['availability' => $availability, 'stock' => $stock, 'lead_days' => $leadDays],
+            );
+        }
+
+        $componentColors = [
+            'base' => ['Sandstone', 'Forest', 'Ink', 'Clay'],
+            'button' => ['Sandstone', 'Forest', 'Ink', 'Clay'],
+            'name' => ['Sandstone', 'Forest', 'Ink', 'Clay'],
+        ];
+
+        foreach ($componentColors as $component => $options) {
+            foreach ($options as $colorName) {
                 $clicker->componentVariants()->updateOrCreate(
                     ['component' => $component, 'color_id' => $colors[$colorName]->id],
-                    ['availability' => $availability, 'stock' => $stock, 'lead_days' => $leadDays, 'is_active' => true],
+                    ['is_active' => true],
                 );
             }
         }

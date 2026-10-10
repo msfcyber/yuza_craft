@@ -205,43 +205,61 @@ class StorefrontOrderTest extends TestCase
         $this->get(route('products.model', $product->slug))->assertOk();
     }
 
-    public function test_clicker_checkout_saves_custom_name_and_deducts_ready_component_stock(): void
+    public function test_clicker_checkout_uses_product_variant_stock_for_selected_component_colors(): void
     {
         $product = Product::factory()->create([
             'customization_type' => 'clicker',
             'name_max_length' => 8,
             'price' => 135000,
+            'model_path' => 'models/keycap-template.3mf',
+            'model_format' => '3mf',
         ]);
         $baseColor = Color::factory()->create(['name' => 'Base Olive']);
         $buttonColor = Color::factory()->create(['name' => 'Button Cream']);
         $nameColor = Color::factory()->create(['name' => 'Name Coral']);
-        $base = ProductComponentVariant::factory()->create([
+        $baseVariant = ProductVariant::factory()->create([
             'product_id' => $product->id,
             'color_id' => $baseColor->id,
-            'component' => 'base',
             'availability' => 'ready',
             'stock' => 5,
+            'lead_days' => 14,
         ]);
-        $button = ProductComponentVariant::factory()->create([
+        $buttonVariant = ProductVariant::factory()->create([
             'product_id' => $product->id,
             'color_id' => $buttonColor->id,
-            'component' => 'button',
             'availability' => 'po',
             'stock' => 0,
             'lead_days' => 13,
         ]);
-        $name = ProductComponentVariant::factory()->create([
+        $nameVariant = ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'color_id' => $nameColor->id,
+            'availability' => 'ready',
+            'stock' => 4,
+            'lead_days' => 14,
+        ]);
+        ProductComponentVariant::factory()->create([
+            'product_id' => $product->id,
+            'color_id' => $baseColor->id,
+            'component' => 'base',
+        ]);
+        ProductComponentVariant::factory()->create([
+            'product_id' => $product->id,
+            'color_id' => $buttonColor->id,
+            'component' => 'button',
+        ]);
+        ProductComponentVariant::factory()->create([
             'product_id' => $product->id,
             'color_id' => $nameColor->id,
             'component' => 'name',
-            'availability' => 'ready',
-            'stock' => 4,
         ]);
 
         $this->get(route('products.show', $product->slug))
             ->assertOk()
+            ->assertSee('data-keycap-generator="true"', false)
+            ->assertSee('data-keycap-template-url="'.route('products.model', $product->slug).'"', false)
             ->assertSee('Warna base')
-            ->assertSee('Nama yang diembos')
+            ->assertSee('Nama pada tombol')
             ->assertSee('maxlength="8"', false);
         $this->get(route('checkout.custom.create', [
             'product' => $product->slug,
@@ -269,9 +287,9 @@ class StorefrontOrderTest extends TestCase
         $order = Order::query()->with('items')->firstOrFail();
         $item = $order->items->firstOrFail();
         $response->assertRedirect(route('orders.confirmation', $order->code));
-        $this->assertSame(3, $base->fresh()->stock);
-        $this->assertSame(0, $button->fresh()->stock);
-        $this->assertSame(2, $name->fresh()->stock);
+        $this->assertSame(3, $baseVariant->fresh()->stock);
+        $this->assertSame(0, $buttonVariant->fresh()->stock);
+        $this->assertSame(2, $nameVariant->fresh()->stock);
         $this->assertSame('po', $item->fulfillment_type);
         $this->assertSame(13, $item->lead_days);
         $this->assertSame('NADIA', $item->customization['name']);
@@ -289,8 +307,45 @@ class StorefrontOrderTest extends TestCase
             'payment_status' => 'unpaid',
         ])->assertRedirect();
 
-        $this->assertSame(5, $base->fresh()->stock);
-        $this->assertSame(4, $name->fresh()->stock);
+        $this->assertSame(5, $baseVariant->fresh()->stock);
+        $this->assertSame(4, $nameVariant->fresh()->stock);
+    }
+
+    public function test_clicker_checkout_reserves_a_shared_color_variant_only_once(): void
+    {
+        $product = Product::factory()->create(['customization_type' => 'clicker']);
+        $color = Color::factory()->create(['name' => 'Olive']);
+        $variant = ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'color_id' => $color->id,
+            'availability' => 'ready',
+            'stock' => 5,
+            'lead_days' => 14,
+        ]);
+
+        foreach (['base', 'button', 'name'] as $component) {
+            ProductComponentVariant::factory()->create([
+                'product_id' => $product->id,
+                'color_id' => $color->id,
+                'component' => $component,
+            ]);
+        }
+
+        $response = $this->post(route('checkout.custom.store', $product->slug), [
+            'customer_name' => 'Nadia Putri',
+            'customer_phone' => '081234567890',
+            'shipping_address' => 'Jl. Melati 12, Bandung',
+            'quantity' => 2,
+            'customization' => [
+                'name' => 'NADIA',
+                'base_color_id' => $color->id,
+                'button_color_id' => $color->id,
+                'name_color_id' => $color->id,
+            ],
+        ]);
+
+        $this->assertSame(3, $variant->fresh()->stock);
+        $response->assertRedirect(route('orders.confirmation', Order::query()->firstOrFail()->code));
     }
 
     public function test_clicker_name_cannot_exceed_product_character_limit(): void
@@ -314,12 +369,60 @@ class StorefrontOrderTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
     }
 
+    public function test_clicker_name_rejects_spaces_and_punctuation(): void
+    {
+        $product = Product::factory()->create(['customization_type' => 'clicker', 'name_max_length' => 10]);
+
+        $this->post(route('checkout.custom.store', $product->slug), [
+            'customer_name' => 'Nadia Putri',
+            'customer_phone' => '081234567890',
+            'shipping_address' => 'Jl. Melati 12, Bandung',
+            'quantity' => 1,
+            'customization' => [
+                'name' => 'NA-DIA',
+                'base_color_id' => 1,
+                'button_color_id' => 2,
+                'name_color_id' => 3,
+            ],
+        ])->assertSessionHasErrors('customization.name');
+
+        $this->assertDatabaseCount('orders', 0);
+    }
+
+    public function test_admin_cannot_set_clicker_name_length_above_ten(): void
+    {
+        $admin = User::factory()->create();
+        $admin->forceFill(['is_admin' => true])->save();
+
+        $this->actingAs($admin)->post(route('admin.products.store'), [
+            'name' => 'Studio Clicker',
+            'price' => 99000,
+            'is_active' => 1,
+            'customization_type' => 'clicker',
+            'name_max_length' => 11,
+        ])->assertSessionHasErrors('name_max_length');
+
+        $this->assertDatabaseCount('products', 0);
+    }
+
     public function test_admin_can_configure_clicker_components_and_name_limit(): void
     {
         $admin = User::factory()->create();
         $admin->forceFill(['is_admin' => true])->save();
         $colors = Color::factory()->count(3)->create();
         $components = [];
+        $variants = [];
+
+        $this->actingAs($admin)
+            ->get(route('admin.products.create'))
+            ->assertSee('Pilihan warna komponen')
+            ->assertSee('base')
+            ->assertSee('button')
+            ->assertSee('huruf')
+            ->assertSee('name="name_max_length" min="1" max="10"', false)
+            ->assertSee('type="checkbox"', false)
+            ->assertDontSee('Tipe stok Base')
+            ->assertDontSee('Estimasi PO Base');
 
         foreach (['base', 'button', 'name'] as $component) {
             foreach ($colors as $color) {
@@ -327,6 +430,9 @@ class StorefrontOrderTest extends TestCase
                     'component' => $component,
                     'color_id' => $color->id,
                     'is_active' => 1,
+                ];
+                $variants[$color->id] = [
+                    'color_id' => $color->id,
                     'availability' => 'ready',
                     'stock' => 5,
                     'lead_days' => 14,
@@ -341,6 +447,7 @@ class StorefrontOrderTest extends TestCase
             'is_active' => 1,
             'customization_type' => 'clicker',
             'name_max_length' => 7,
+            'variants' => $variants,
             'component_variants' => $components,
         ]);
 
@@ -349,6 +456,6 @@ class StorefrontOrderTest extends TestCase
         $this->assertSame('clicker', $product->customization_type);
         $this->assertSame(7, $product->name_max_length);
         $this->assertCount(9, $product->componentVariants()->where('is_active', true)->get());
-        $this->get(route('products.show', $product->slug))->assertOk()->assertSee('Nama yang diembos');
+        $this->get(route('products.show', $product->slug))->assertOk()->assertSee('Nama pada tombol');
     }
 }

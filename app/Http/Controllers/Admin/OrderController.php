@@ -55,8 +55,24 @@ class OrderController extends Controller
             if ($data['status'] === 'cancelled' && $oldStatus !== 'cancelled') {
                 foreach ($lockedOrder->items as $item) {
                     if ($item->customization) {
+                        $restoredVariantIds = [];
+
                         foreach ($item->customization['components'] ?? [] as $component) {
-                            if ($component['availability'] === 'ready' && isset($component['component_variant_id'])) {
+                            if ($component['availability'] !== 'ready') {
+                                continue;
+                            }
+
+                            if (isset($component['product_variant_id'])) {
+                                $variantId = (int) $component['product_variant_id'];
+
+                                if (! isset($restoredVariantIds[$variantId])) {
+                                    ProductVariant::query()
+                                        ->lockForUpdate()
+                                        ->find($variantId)
+                                        ?->increment('stock', $item->quantity);
+                                    $restoredVariantIds[$variantId] = true;
+                                }
+                            } elseif (isset($component['component_variant_id'])) {
                                 ProductComponentVariant::query()
                                     ->lockForUpdate()
                                     ->find($component['component_variant_id'])

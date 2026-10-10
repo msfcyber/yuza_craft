@@ -89,12 +89,25 @@ class CheckoutController extends Controller
     public function createCustom(Request $request, Product $product): View
     {
         abort_unless($product->is_active && $product->customization_type === 'clicker', 404);
-        $product->load(['componentVariants' => fn ($query) => $query->where('is_active', true)->whereHas('color', fn ($colors) => $colors->where('is_active', true))->with('color')]);
+        $nameMaxLength = min(10, (int) $product->name_max_length);
+        $product->load([
+            'variants' => fn ($query) => $query->whereHas('color', fn ($colors) => $colors->where('is_active', true))->with('color'),
+            'componentVariants' => fn ($query) => $query->where('is_active', true)->whereHas('color', fn ($colors) => $colors->where('is_active', true))->with('color'),
+        ]);
 
         $options = collect(self::CLICKER_COMPONENTS)->mapWithKeys(fn (string $component) => [
             $component => $product->componentVariants
                 ->where('component', $component)
-                ->filter(fn ($option) => $option->availability === 'po' || $option->stock > 0)
+                ->map(function ($option) use ($product) {
+                    $variant = $product->variants->firstWhere('color_id', $option->color_id);
+
+                    if ($variant) {
+                        $option->setRelation('productVariant', $variant);
+                    }
+
+                    return $option;
+                })
+                ->filter(fn ($option) => $option->productVariant && ($option->productVariant->availability === 'po' || $option->productVariant->stock > 0))
                 ->values(),
         ]);
         abort_if($options->contains(fn ($componentOptions) => $componentOptions->isEmpty()), 409, 'Pilihan warna clicker belum disiapkan.');
@@ -106,31 +119,34 @@ class CheckoutController extends Controller
             $selectedColors[$component] = $options[$component]->firstWhere('id', $requestedId) ?? $options[$component]->first();
         }
 
-        $customName = mb_substr((string) ($queryCustomization['name'] ?? ''), 0, $product->name_max_length);
+        $customName = mb_substr((string) ($queryCustomization['name'] ?? ''), 0, $nameMaxLength);
         $readyStocks = collect($selectedColors)
-            ->filter(fn ($option) => $option->availability === 'ready')
+            ->map(fn ($option) => $option->productVariant)
+            ->unique('id')
+            ->filter(fn ($variant) => $variant->availability === 'ready')
             ->pluck('stock');
         $maxReadyQuantity = $readyStocks->isEmpty() ? 20 : min(20, (int) $readyStocks->min());
 
-        return view('storefront.custom-checkout', compact('product', 'options', 'selectedColors', 'customName', 'maxReadyQuantity'));
+        return view('storefront.custom-checkout', compact('product', 'options', 'selectedColors', 'customName', 'maxReadyQuantity', 'nameMaxLength'));
     }
 
     public function storeCustom(Request $request, Product $product): RedirectResponse
     {
         abort_unless($product->is_active && $product->customization_type === 'clicker', 404);
+        $nameMaxLength = min(10, (int) $product->name_max_length);
 
         $validated = $request->validate([
             'customer_name' => ['required', 'string', 'max:120'],
             'customer_phone' => ['required', 'string', 'regex:/^[0-9+(). -]{8,24}$/'],
             'shipping_address' => ['required', 'string', 'max:1500'],
             'quantity' => ['required', 'integer', 'min:1', 'max:20'],
-            'customization.name' => ['required', 'string', 'max:'.$product->name_max_length, 'regex:/^[\pL\pN .\'-]+$/u'],
+            'customization.name' => ['required', 'string', 'max:'.$nameMaxLength, 'regex:/^[\pL\pN]+$/u'],
             'customization.base_color_id' => ['required', 'integer', 'min:1'],
             'customization.button_color_id' => ['required', 'integer', 'min:1'],
             'customization.name_color_id' => ['required', 'integer', 'min:1'],
         ], [
-            'customization.name.max' => 'Nama maksimal '.$product->name_max_length.' karakter.',
-            'customization.name.regex' => 'Nama hanya boleh berisi huruf, angka, spasi, titik, apostrof, dan tanda hubung.',
+            'customization.name.max' => 'Nama maksimal '.$nameMaxLength.' karakter.',
+            'customization.name.regex' => 'Nama hanya boleh berisi huruf dan angka tanpa spasi atau tanda baca.',
         ]);
 
         $phone = self::normalizePhone($validated['customer_phone']);
@@ -143,9 +159,11 @@ class CheckoutController extends Controller
             abort_unless($lockedProduct->is_active && $lockedProduct->customization_type === 'clicker', 404);
             $name = trim($validated['customization']['name']);
 
-            if (mb_strlen($name) > $lockedProduct->name_max_length) {
+            $lockedNameMaxLength = min(10, (int) $lockedProduct->name_max_length);
+
+            if (mb_strlen($name) > $lockedNameMaxLength) {
                 throw ValidationException::withMessages([
-                    'customization.name' => 'Nama maksimal '.$lockedProduct->name_max_length.' karakter.',
+                    'customization.name' => 'Nama maksimal '.$lockedNameMaxLength.' karakter.',
                 ]);
             }
 
@@ -159,13 +177,22 @@ class CheckoutController extends Controller
                 ->with('color')
                 ->get()
                 ->keyBy('component');
+            $productVariants = ProductVariant::query()
+                ->where('product_id', $lockedProduct->id)
+                ->whereIn('color_id', array_values($selections))
+                ->lockForUpdate()
+                ->with('color')
+                ->get()
+                ->keyBy('color_id');
 
             $snapshot = [];
             $poLeadDays = [];
+            $reservedVariantIds = [];
             foreach ($selections as $component => $colorId) {
                 $option = $componentOptions->get($component);
+                $variant = $productVariants->get($colorId);
 
-                if (! $option || (int) $option->color_id !== $colorId || ! $option->color->is_active || ($option->availability === 'ready' && $option->stock < $validated['quantity'])) {
+                if (! $option || (int) $option->color_id !== $colorId || ! $option->color->is_active || ! $variant || ($variant->availability === 'ready' && $variant->stock < $validated['quantity'])) {
                     throw ValidationException::withMessages([
                         'customization.'.$component.'_color_id' => 'Pilihan warna sudah tidak tersedia atau stoknya tidak mencukupi. Silakan pilih ulang.',
                     ]);
@@ -173,18 +200,23 @@ class CheckoutController extends Controller
 
                 $snapshot[$component] = [
                     'component_variant_id' => $option->id,
+                    'product_variant_id' => $variant->id,
                     'color_id' => $option->color_id,
                     'color_name' => $option->color->name,
                     'hex_code' => $option->color->hex_code,
-                    'availability' => $option->availability,
-                    'lead_days' => $option->availability === 'po' ? $option->lead_days : null,
+                    'availability' => $variant->availability,
+                    'lead_days' => $variant->availability === 'po' ? $variant->lead_days : null,
                 ];
 
-                if ($option->availability === 'po') {
-                    $poLeadDays[] = $option->lead_days;
+                if ($variant->availability === 'po') {
+                    $poLeadDays[] = $variant->lead_days;
                 } else {
-                    $option->decrement('stock', $validated['quantity']);
+                    $reservedVariantIds[$variant->id] = $variant;
                 }
+            }
+
+            foreach ($reservedVariantIds as $variant) {
+                $variant->decrement('stock', $validated['quantity']);
             }
 
             $nameLength = mb_strlen($name);

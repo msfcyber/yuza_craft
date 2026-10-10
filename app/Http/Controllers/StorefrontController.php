@@ -30,7 +30,16 @@ class StorefrontController extends Controller
         $clickerOptions = collect(['base', 'button', 'name'])->mapWithKeys(fn (string $component) => [
             $component => $product->componentVariants
                 ->where('component', $component)
-                ->filter(fn ($option) => $option->availability === 'po' || $option->stock > 0)
+                ->map(function ($option) use ($product) {
+                    $variant = $product->variants->firstWhere('color_id', $option->color_id);
+
+                    if ($variant) {
+                        $option->setRelation('productVariant', $variant);
+                    }
+
+                    return $option;
+                })
+                ->filter(fn ($option) => $option->productVariant && ($option->productVariant->availability === 'po' || $option->productVariant->stock > 0))
                 ->values(),
         ]);
         $clickerAvailable = $clickerOptions->every(fn ($options) => $options->isNotEmpty());
