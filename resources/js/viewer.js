@@ -526,11 +526,11 @@ function startViewer(container) {
         keycapModel.name = 'generated-keycaps';
 
         const keyWidth = Math.min(0.58, 3 / characters.length);
-        const keyGap = 0;
+        const keyOverlap = keyWidth * 0.23;
         const bodyHeight = keyWidth * 0.43;
         const topHeight = keyWidth * 0.16;
-        const stride = keyWidth + keyGap;
-        const totalWidth = keyWidth * characters.length + keyGap * (characters.length - 1);
+        const stride = keyWidth - keyOverlap;
+        const totalWidth = keyWidth * characters.length - keyOverlap * (characters.length - 1);
 
         characters.forEach((character, index) => {
             const keyPosition = index * stride - (totalWidth - keyWidth) / 2;
