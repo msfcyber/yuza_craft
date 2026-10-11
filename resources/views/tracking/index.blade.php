@@ -1,16 +1,54 @@
+<div>
+    <!-- Nothing worth having comes easy. - Theodore Roosevelt -->
+</div>
 @extends('layouts.storefront')
 @section('title', 'Riwayat pesanan — Printlab')
 @section('content')
-<section class="mx-auto max-w-3xl px-5 py-12 sm:px-8 sm:py-20"><p class="text-[10px] font-bold uppercase tracking-[.2em] text-[#879f32]">Area pelanggan</p><h1 class="mt-2 text-3xl font-semibold tracking-tight">Riwayat pesanan</h1><p class="mt-3 text-sm leading-6 text-[#77786f]">Verifikasi nomor WhatsApp untuk melihat semua transaksi yang pernah dibuat dengan nomor itu.</p>
-@if ($verifiedPhone)
-    <div class="mt-7 flex items-center justify-between rounded-2xl bg-[#e8f3cf] px-5 py-4"><p class="text-xs font-semibold text-[#526428]">Terverifikasi · +{{ $verifiedPhone }}</p><form method="POST" action="{{ route('history.forget') }}">@csrf @method('DELETE')<button class="text-xs underline">Keluar dari riwayat</button></form></div>
-    <div class="mt-5 space-y-3">@forelse ($orders as $order)<a href="{{ route('tracking.show', $order->code) }}" class="block rounded-2xl border border-black/5 bg-white p-5 hover:shadow-sm"><div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-sm font-bold">{{ $order->code }}</p><p class="mt-1 text-xs text-[#77786f]">{{ $order->created_at->format('d M Y') }} · {{ $order->items->first()->product_name ?? '' }}</p></div><span class="rounded-full bg-[#f2f1eb] px-3 py-1.5 text-[10px] font-semibold">{{ ['pending_payment' => 'Menunggu pembayaran', 'paid' => 'Dibayar', 'processing' => 'Diproses', 'ready' => 'Siap dikirim', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'][$order->status] }}</span></div><p class="mt-4 text-sm font-bold">Rp {{ number_format($order->subtotal, 0, ',', '.') }} <span class="float-right font-normal text-[#77786f]">Lihat detail ↗</span></p></a>@empty<p class="rounded-2xl bg-white p-8 text-center text-sm text-[#77786f]">Belum ada transaksi untuk nomor ini.</p>@endforelse</div>
-@else
-    <div class="mt-7 grid gap-5 rounded-[1.8rem] border border-black/5 bg-white p-6 sm:grid-cols-2 sm:p-8">
-        <form method="POST" action="{{ route('history.send-otp') }}" class="space-y-4">@csrf<h2 class="text-sm font-bold">1. Kirim kode verifikasi</h2><label class="block text-xs text-[#77786f]" for="phone">Nomor WhatsApp yang digunakan saat memesan</label><input id="phone" name="phone" value="{{ old('phone') }}" required inputmode="tel" class="form-input" placeholder="08xx xxxx xxxx">@error('phone')<p class="form-error">{{ $message }}</p>@enderror<button class="w-full rounded-full bg-[#20211f] px-4 py-3 text-xs font-bold text-white">Kirim OTP via WhatsApp</button></form>
-        <form method="POST" action="{{ route('history.verify-otp') }}" class="space-y-4">@csrf<h2 class="text-sm font-bold">2. Verifikasi nomor</h2><label class="block text-xs text-[#77786f]" for="verify_phone">Nomor WhatsApp</label><input id="verify_phone" name="phone" value="{{ old('phone') }}" required inputmode="tel" class="form-input" placeholder="08xx xxxx xxxx"><label class="block text-xs text-[#77786f]" for="code">Kode 6 digit</label><input id="code" name="code" required inputmode="numeric" maxlength="6" class="form-input tracking-[.3em]" placeholder="••••••">@if (session('otp_sent'))<p class="text-xs leading-5 text-[#627534]">{{ session('otp_sent') }} @if (app()->environment('local')) <span class="block text-[10px]">Mode lokal: kode terlihat di storage/logs/laravel.log.</span>@endif</p>@endif @error('code')<p class="form-error">{{ $message }}</p>@enderror<button class="w-full rounded-full border border-black/10 px-4 py-3 text-xs font-bold hover:bg-[#f5f4ef]">Verifikasi & lihat pesanan</button></form>
-        @if ($errors->any() && ! $errors->has('phone') && ! $errors->has('code'))<p class="sm:col-span-2 text-xs text-red-600">{{ $errors->first() }}</p>@endif
-    </div>
-@endif
+<section class="mx-auto max-w-3xl px-5 py-12 sm:px-8 sm:py-20">
+    <p class="text-[10px] font-bold uppercase tracking-[.2em] text-[#879f32]">Area pelanggan</p>
+    <h1 class="mt-2 text-3xl font-semibold tracking-tight">Riwayat pesanan</h1>
+    <p class="mt-3 text-sm leading-6 text-[#77786f]">Masukkan nomor HP lengkap yang digunakan saat memesan dan 4 digit terakhir nomor tersebut untuk melihat semua transaksimu.</p>
+
+    @if ($verifiedPhone)
+        <div class="mt-7 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-[#e8f3cf] px-5 py-4">
+            <p class="text-xs font-semibold text-[#526428]">Menampilkan pesanan untuk +{{ $verifiedPhone }}</p>
+            <form method="POST" action="{{ route('history.forget') }}">
+                @csrf
+                @method('DELETE')
+                <button class="text-xs underline">Keluar dari riwayat</button>
+            </form>
+        </div>
+        <div class="mt-5 space-y-3">
+            @forelse ($orders as $order)
+                <a href="{{ route('tracking.show', $order->code) }}" class="block rounded-2xl border border-black/5 bg-white p-5 hover:shadow-sm">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                            <p class="text-sm font-bold">{{ $order->code }}</p>
+                            <p class="mt-1 text-xs text-[#77786f]">{{ $order->created_at->format('d M Y') }} · {{ $order->items->first()->product_name ?? '' }}</p>
+                        </div>
+                        <span class="rounded-full bg-[#f2f1eb] px-3 py-1.5 text-[10px] font-semibold">{{ ['pending_payment' => 'Menunggu pembayaran', 'paid' => 'Dibayar', 'processing' => 'Diproses', 'ready' => 'Siap dikirim', 'completed' => 'Selesai', 'cancelled' => 'Dibatalkan'][$order->status] }}</span>
+                    </div>
+                    <p class="mt-4 text-sm font-bold">Rp {{ number_format($order->subtotal, 0, ',', '.') }} <span class="float-right font-normal text-[#77786f]">Lihat detail ↗</span></p>
+                </a>
+            @empty
+                <p class="rounded-2xl bg-white p-8 text-center text-sm text-[#77786f]">Belum ada transaksi dengan nomor HP ini.</p>
+            @endforelse
+        </div>
+    @else
+        <form method="POST" action="{{ route('history.verify') }}" class="mt-7 space-y-4 rounded-[1.8rem] border border-black/5 bg-white p-6 sm:p-8">
+            @csrf
+            <div>
+                <label for="phone" class="mb-2 block text-xs font-bold">Nomor HP lengkap</label>
+                <input id="phone" name="phone" value="{{ old('phone') }}" required inputmode="tel" autocomplete="tel" class="form-input" placeholder="08xx xxxx xxxx">
+                @error('phone')<p class="form-error">{{ $message }}</p>@enderror
+            </div>
+            <div>
+                <label for="phone_last_four" class="mb-2 block text-xs font-bold">4 digit terakhir nomor HP</label>
+                <input id="phone_last_four" name="phone_last_four" value="{{ old('phone_last_four') }}" required inputmode="numeric" pattern="[0-9]{4}" maxlength="4" class="form-input tracking-[.3em]" placeholder="••••">
+                @error('phone_last_four')<p class="form-error">{{ $message }}</p>@enderror
+            </div>
+            <button class="w-full rounded-full bg-[#20211f] px-6 py-3 text-sm font-bold text-white">Lihat semua transaksi ↗</button>
+        </form>
+    @endif
 </section>
 @endsection

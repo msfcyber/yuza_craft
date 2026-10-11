@@ -22,12 +22,12 @@ Route::get('/orders/confirmation/{code}', [TrackingController::class, 'confirmat
 Route::get('/track', function (Request $request) {
     $code = trim((string) $request->query('code', ''));
 
-    return $code !== '' ? redirect()->route('tracking.show', $code) : view('tracking.lookup');
+    return view('tracking.lookup', compact('code'));
 })->name('tracking.lookup');
+Route::post('/track', [TrackingController::class, 'verify'])->middleware('throttle:10,5')->name('tracking.verify');
 Route::get('/track/{code}', [TrackingController::class, 'show'])->middleware('throttle:60,1')->name('tracking.show');
 Route::get('/history', [TrackingController::class, 'index'])->name('history.index');
-Route::post('/history/send-otp', [TrackingController::class, 'sendOtp'])->middleware('throttle:3,5')->name('history.send-otp');
-Route::post('/history/verify-otp', [TrackingController::class, 'verifyOtp'])->middleware('throttle:10,5')->name('history.verify-otp');
+Route::post('/history', [TrackingController::class, 'verifyHistory'])->middleware('throttle:10,5')->name('history.verify');
 Route::delete('/history/session', [TrackingController::class, 'forgetHistory'])->name('history.forget');
 
 Route::prefix('admin')->name('admin.')->group(function (): void {

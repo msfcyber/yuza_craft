@@ -3,31 +3,79 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
-use App\Models\PhoneOtp;
-use App\Services\WhatsAppOtpSender;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\ValidationException;
 
 class TrackingController extends Controller
 {
     public function index(): View
     {
-        $orders = collect();
         $verifiedPhone = session('verified_phone');
-
-        if ($verifiedPhone) {
-            $orders = Order::query()->where('customer_phone', $verifiedPhone)->with('items')->latest()->get();
-        }
+        $orders = $verifiedPhone
+            ? Order::query()->where('customer_phone', $verifiedPhone)->with('items')->latest()->get()
+            : collect();
 
         return view('tracking.index', compact('orders', 'verifiedPhone'));
     }
 
-    public function show(string $code): View
+    public function verifyHistory(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'phone' => ['required', 'string', 'max:24', 'regex:/^[0-9+(). -]{8,24}$/'],
+            'phone_last_four' => ['required', 'digits:4'],
+        ]);
+        $phone = CheckoutController::normalizePhone($validated['phone']);
+
+        if (! hash_equals(substr($phone, -4), $validated['phone_last_four'])) {
+            throw ValidationException::withMessages([
+                'phone_last_four' => 'Nomor HP atau 4 digit terakhir tidak cocok.',
+            ]);
+        }
+
+        $request->session()->put('verified_phone', $phone);
+        $request->session()->forget('tracked_order_code');
+
+        return redirect()->route('history.index');
+    }
+
+    public function forgetHistory(Request $request): RedirectResponse
+    {
+        $request->session()->forget(['verified_phone', 'tracked_order_code']);
+
+        return redirect()->route('history.index');
+    }
+
+    public function verify(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'code' => ['required', 'string', 'max:24'],
+            'phone_last_four' => ['required', 'digits:4'],
+        ]);
+        $code = strtoupper(trim($validated['code']));
+        $order = Order::query()->where('code', $code)->first();
+
+        if (! $order || ! hash_equals(substr($order->customer_phone, -4), $validated['phone_last_four'])) {
+            throw ValidationException::withMessages([
+                'phone_last_four' => 'Kode transaksi atau 4 digit terakhir nomor HP tidak cocok.',
+            ]);
+        }
+
+        $request->session()->put('tracked_order_code', $order->code);
+
+        return redirect()->route('tracking.show', $order->code);
+    }
+
+    public function show(Request $request, string $code): View
     {
         $order = Order::query()->where('code', $code)->with('items')->firstOrFail();
+        $canViewOrder = $request->session()->get('tracked_order_code') === $order->code
+            || $request->session()->get('verified_phone') === $order->customer_phone;
+
+        if (! $canViewOrder) {
+            return view('tracking.lookup', ['code' => $order->code]);
+        }
 
         return view('tracking.show', compact('order'));
     }
@@ -37,62 +85,5 @@ class TrackingController extends Controller
         $order = Order::query()->where('code', $code)->with('items')->firstOrFail();
 
         return view('storefront.confirmation', compact('order'));
-    }
-
-    public function sendOtp(Request $request, WhatsAppOtpSender $sender): RedirectResponse
-    {
-        $validated = $request->validate(['phone' => ['required', 'string', 'max:24']]);
-        $phone = CheckoutController::normalizePhone($validated['phone']);
-        $key = 'history-otp:'.$phone.'|'.$request->ip();
-
-        if (RateLimiter::tooManyAttempts($key, 3)) {
-            return back()->withErrors(['phone' => 'Terlalu banyak permintaan. Coba lagi beberapa menit.']);
-        }
-        RateLimiter::hit($key, 300);
-
-        if (Order::query()->where('customer_phone', $phone)->exists()) {
-            $code = (string) random_int(100000, 999999);
-            PhoneOtp::query()->where('phone', $phone)->delete();
-            PhoneOtp::query()->create([
-                'phone' => $phone,
-                'code_hash' => Hash::make($code),
-                'expires_at' => now()->addMinutes(5),
-            ]);
-            $sender->send($phone, $code);
-        }
-
-        return back()->with('otp_sent', 'Jika nomor tersebut memiliki pesanan, kode verifikasi telah dikirim melalui WhatsApp.');
-    }
-
-    public function verifyOtp(Request $request): RedirectResponse
-    {
-        $validated = $request->validate([
-            'phone' => ['required', 'string', 'max:24'],
-            'code' => ['required', 'digits:6'],
-        ]);
-        $phone = CheckoutController::normalizePhone($validated['phone']);
-        $otp = PhoneOtp::query()->where('phone', $phone)->latest()->first();
-
-        if (! $otp || $otp->verified_at || $otp->expires_at->isPast() || $otp->attempts >= 5) {
-            return back()->withErrors(['code' => 'Kode tidak valid atau sudah kedaluwarsa.']);
-        }
-
-        $otp->increment('attempts');
-
-        if (! Hash::check($validated['code'], $otp->code_hash)) {
-            return back()->withErrors(['code' => 'Kode tidak valid atau sudah kedaluwarsa.']);
-        }
-
-        $otp->update(['verified_at' => now()]);
-        $request->session()->put('verified_phone', $phone);
-
-        return redirect()->route('history.index')->with('success', 'Nomor HP berhasil diverifikasi.');
-    }
-
-    public function forgetHistory(Request $request): RedirectResponse
-    {
-        $request->session()->forget('verified_phone');
-
-        return redirect()->route('history.index');
     }
 }

@@ -9,7 +9,6 @@ use App\Models\Product;
 use App\Models\ProductComponentVariant;
 use App\Models\ProductVariant;
 use App\Models\User;
-use App\Services\WhatsAppOtpSender;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -123,25 +122,93 @@ class StorefrontOrderTest extends TestCase
         $this->actingAs($admin)->get(route('admin.dashboard'))->assertOk();
     }
 
-    public function test_customer_must_verify_phone_before_viewing_order_history(): void
+    public function test_customer_tracks_order_with_transaction_code_and_last_four_phone_digits(): void
     {
-        $order = Order::factory()->create(['customer_phone' => '6281234567890']);
-        $sentCode = null;
-        $this->mock(WhatsAppOtpSender::class)->shouldReceive('send')
-            ->once()
-            ->withArgs(function (string $phone, string $code) use (&$sentCode): bool {
-                $sentCode = $code;
+        $order = Order::factory()->create([
+            'code' => '3DP-ORDER1234',
+            'customer_phone' => '6281234567890',
+        ]);
+        $this->get(route('tracking.show', $order->code))
+            ->assertSee('4 digit terakhir nomor HP')
+            ->assertDontSee($order->customer_name);
+        $this->post(route('tracking.verify'), [
+            'code' => $order->code,
+            'phone_last_four' => '7890',
+        ])->assertRedirect(route('tracking.show', $order->code))
+            ->assertSessionHas('tracked_order_code', $order->code);
 
-                return $phone === '6281234567890';
-            });
+        $this->get(route('tracking.show', $order->code))->assertSee($order->customer_name);
+    }
 
-        $this->get(route('history.index'))->assertDontSee($order->code);
-        $this->post(route('history.send-otp'), ['phone' => '081234567890'])->assertSessionHas('otp_sent');
-        $this->post(route('history.verify-otp'), ['phone' => '081234567890', 'code' => $sentCode])
-            ->assertRedirect(route('history.index'))
+    public function test_history_page_requests_phone_number_without_whatsapp_otp(): void
+    {
+        $this->get(route('history.index'))
+            ->assertSee('Nomor HP lengkap')
+            ->assertSee('4 digit terakhir nomor HP')
+            ->assertDontSee('OTP');
+    }
+
+    public function test_customer_sees_all_orders_for_phone_after_entering_full_number_and_last_four_digits(): void
+    {
+        $firstOrder = Order::factory()->create([
+            'code' => '3DP-FIRST1234',
+            'customer_phone' => '6281234567890',
+        ]);
+        $secondOrder = Order::factory()->create([
+            'code' => '3DP-SECOND123',
+            'customer_phone' => '6281234567890',
+        ]);
+        $otherPhoneOrder = Order::factory()->create([
+            'code' => '3DP-OTHER1234',
+            'customer_phone' => '6281234567000',
+        ]);
+
+        $this->post(route('history.verify'), [
+            'phone' => '081234567890',
+            'phone_last_four' => '7890',
+        ])->assertRedirect(route('history.index'))
             ->assertSessionHas('verified_phone', '6281234567890');
 
-        $this->get(route('history.index'))->assertSee($order->code);
+        $this->get(route('history.index'))
+            ->assertSee($firstOrder->code)
+            ->assertSee($secondOrder->code)
+            ->assertDontSee($otherPhoneOrder->code);
+        $this->get(route('tracking.show', $secondOrder->code))->assertSee($secondOrder->customer_name);
+    }
+
+    public function test_customer_cannot_view_order_history_with_incorrect_last_four_phone_digits(): void
+    {
+        Order::factory()->create(['customer_phone' => '6281234567890']);
+
+        $this->from(route('history.index'))->post(route('history.verify'), [
+            'phone' => '081234567890',
+            'phone_last_four' => '1234',
+        ])->assertSessionHasErrors(['phone_last_four' => 'Nomor HP atau 4 digit terakhir tidak cocok.'])
+            ->assertSessionMissing('verified_phone');
+    }
+
+    public function test_customer_cannot_track_order_with_incorrect_last_four_phone_digits(): void
+    {
+        $order = Order::factory()->create(['customer_phone' => '6281234567890']);
+
+        $this->from(route('tracking.lookup'))->post(route('tracking.verify'), [
+            'code' => $order->code,
+            'phone_last_four' => '1234',
+        ])->assertSessionHasErrors(['phone_last_four' => 'Kode transaksi atau 4 digit terakhir nomor HP tidak cocok.'])
+            ->assertSessionMissing('tracked_order_code');
+
+        $this->get(route('tracking.show', $order->code))->assertDontSee($order->customer_name);
+    }
+
+    public function test_customer_cannot_access_another_order_from_verified_tracking_session(): void
+    {
+        $verifiedOrder = Order::factory()->create(['customer_phone' => '6281234567890']);
+        $otherOrder = Order::factory()->create(['customer_name' => 'Other Customer']);
+
+        $this->withSession(['tracked_order_code' => $verifiedOrder->code])
+            ->get(route('tracking.show', $otherOrder->code))
+            ->assertSee('4 digit terakhir nomor HP')
+            ->assertDontSee('Other Customer');
     }
 
     public function test_cancelling_ready_order_restores_stock_once(): void
@@ -299,6 +366,10 @@ class StorefrontOrderTest extends TestCase
         $this->assertSame('Base Olive', $item->customization['components']['base']['color_name']);
         $this->assertSame('Button Cream', $item->customization['components']['button']['color_name']);
         $this->get(route('orders.confirmation', $order->code))->assertOk()->assertSee('NADIA')->assertSee('Button Cream');
+        $this->post(route('tracking.verify'), [
+            'code' => $order->code,
+            'phone_last_four' => '7890',
+        ])->assertRedirect(route('tracking.show', $order->code));
         $this->get(route('tracking.show', $order->code))->assertOk()->assertSee('NADIA')->assertSee('Base Olive');
 
         $admin = User::factory()->create();
