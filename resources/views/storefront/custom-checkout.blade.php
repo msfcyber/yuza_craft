@@ -32,11 +32,15 @@
         </div>
         <aside class="h-fit rounded-[1.8rem] bg-[#eae9e2] p-6 sm:p-7 lg:sticky lg:top-28">
             <p class="text-[10px] font-bold uppercase tracking-[.2em] text-[#7a7b72]">Ringkasan</p>
-            <div class="mt-6 flex items-start justify-between gap-3"><h2 class="font-semibold">{{ $product->name }}</h2><p class="text-sm font-bold">Rp {{ number_format($product->price, 0, ',', '.') }}</p></div>
+            <div class="mt-6 flex items-start justify-between gap-3"><h2 class="font-semibold">{{ $product->name }}</h2><p class="text-sm font-bold">Rp {{ number_format($unitPrice, 0, ',', '.') }}</p></div>
+            <div class="mt-4 space-y-2 text-xs text-[#65675e]">
+                <div class="flex justify-between"><span>Harga awal (1–4 huruf)</span><span>Rp {{ number_format($product->price, 0, ',', '.') }}</span></div>
+                <div class="flex justify-between"><span>{{ $additionalCharacterCount }} huruf tambahan × Rp {{ number_format($product->additional_character_price, 0, ',', '.') }}</span><span>Rp {{ number_format($additionalCharacterCount * $product->additional_character_price, 0, ',', '.') }}</span></div>
+            </div>
             <div class="mt-5 rounded-xl bg-white/70 p-4 text-xs leading-5 text-[#65675e]">@if ($poLeadDays->isEmpty())Semua komponen ready.@else Pre-order · estimasi hingga {{ $poLeadDays->max() }} hari kerja.@endif</div>
             <div class="my-5 border-t border-black/10"></div>
-            <div class="flex justify-between text-sm"><span>Subtotal</span><strong id="checkout-subtotal" data-unit-price="{{ $product->price }}">Rp {{ number_format($product->price, 0, ',', '.') }}</strong></div>
-            <p class="mt-4 text-[10px] leading-4 text-[#85867d]">Harga dasar clicker sama untuk semua warna dan panjang nama. Biaya pengiriman dikonfirmasi terpisah.</p>
+            <div class="flex justify-between text-sm"><span>Subtotal</span><strong id="checkout-subtotal" data-unit-price="{{ $unitPrice }}">Rp {{ number_format($unitPrice, 0, ',', '.') }}</strong></div>
+            <p class="mt-4 text-[10px] leading-4 text-[#85867d]">Harga awal mencakup 1–4 huruf. Setiap huruf mulai huruf ke-5 dikenakan Rp {{ number_format($product->additional_character_price, 0, ',', '.') }}. Biaya pengiriman dikonfirmasi terpisah.</p>
         </aside>
     </div>
 </section>

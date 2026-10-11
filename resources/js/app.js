@@ -53,13 +53,20 @@ if (clickerForm) {
     const nameInput = clickerForm.querySelector('#custom-name');
     const namePreview = clickerForm.querySelector('#custom-name-preview');
     const nameLength = clickerForm.querySelector('#name-length');
+    const priceEstimate = document.querySelector('#custom-price-estimate');
     const updateNamePreview = () => {
         const characters = Array.from(nameInput.value.normalize('NFC').replace(/[^\p{L}\p{N}]/gu, ''));
         const value = characters.slice(0, nameInput.maxLength).join('');
+        const characterCount = [...value].length;
         nameInput.value = value;
+        const includedCharacters = Number.parseInt(priceEstimate?.dataset.includedCharacterCount || '4', 10);
+        const additionalCharacters = Math.max(0, characterCount - includedCharacters);
+        const estimatedPrice = Number.parseInt(priceEstimate?.dataset.basePrice || '0', 10)
+            + additionalCharacters * Number.parseInt(priceEstimate?.dataset.additionalCharacterPrice || '0', 10);
 
         if (namePreview) namePreview.textContent = value || 'Nama kamu';
-        if (nameLength) nameLength.textContent = String([...value].length);
+        if (nameLength) nameLength.textContent = String(characterCount);
+        if (priceEstimate) priceEstimate.textContent = `Estimasi harga: Rp ${estimatedPrice.toLocaleString('id-ID')}`;
         if (viewer) {
             viewer.dataset.customName = value;
             viewer.dispatchEvent(new CustomEvent('keycap-name-change', { detail: value }));

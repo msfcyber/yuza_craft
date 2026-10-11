@@ -74,6 +74,7 @@ class ProductController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'customization_type' => ['required', 'in:standard,clicker'],
             'name_max_length' => ['required_if:customization_type,clicker', 'integer', 'min:1', 'max:10'],
+            'additional_character_price' => ['required_if:customization_type,clicker', 'integer', 'min:0', 'max:100000000'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
             'model_file' => [
                 'nullable',
@@ -138,6 +139,7 @@ class ProductController extends Controller
             'slug' => Str::slug($data['name']).'-'.Str::lower(Str::random(5)),
             'description' => $data['description'] ?? null,
             'price' => $data['price'],
+            'additional_character_price' => $data['customization_type'] === 'clicker' ? (int) $data['additional_character_price'] : 0,
             'is_active' => $request->boolean('is_active'),
             'customization_type' => $data['customization_type'],
             'name_max_length' => $data['customization_type'] === 'clicker' ? min(10, (int) $data['name_max_length']) : 8,

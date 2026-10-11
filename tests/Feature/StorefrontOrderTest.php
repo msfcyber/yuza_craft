@@ -294,6 +294,8 @@ class StorefrontOrderTest extends TestCase
         $this->assertSame(13, $item->lead_days);
         $this->assertSame('NADIA', $item->customization['name']);
         $this->assertSame(5, $item->customization['name_length']);
+        $this->assertSame(135000, $item->unit_price);
+        $this->assertSame(270000, $item->subtotal);
         $this->assertSame('Base Olive', $item->customization['components']['base']['color_name']);
         $this->assertSame('Button Cream', $item->customization['components']['button']['color_name']);
         $this->get(route('orders.confirmation', $order->code))->assertOk()->assertSee('NADIA')->assertSee('Button Cream');
@@ -346,6 +348,65 @@ class StorefrontOrderTest extends TestCase
 
         $this->assertSame(3, $variant->fresh()->stock);
         $response->assertRedirect(route('orders.confirmation', Order::query()->firstOrFail()->code));
+    }
+
+    public function test_clicker_checkout_charges_extra_for_each_character_after_four(): void
+    {
+        $product = Product::factory()->create([
+            'customization_type' => 'clicker',
+            'price' => 25000,
+            'additional_character_price' => 7000,
+        ]);
+        $color = Color::factory()->create();
+        ProductVariant::factory()->create([
+            'product_id' => $product->id,
+            'color_id' => $color->id,
+            'availability' => 'po',
+            'stock' => 0,
+        ]);
+
+        foreach (['base', 'button', 'name'] as $component) {
+            ProductComponentVariant::factory()->create([
+                'product_id' => $product->id,
+                'color_id' => $color->id,
+                'component' => $component,
+            ]);
+        }
+
+        $this->get(route('products.show', $product->slug))
+            ->assertSee('Rp 25.000')
+            ->assertSee('Rp 7.000 per huruf');
+        $this->get(route('checkout.custom.create', [
+            'product' => $product->slug,
+            'customization' => [
+                'base_color_id' => $color->id,
+                'button_color_id' => $color->id,
+                'name_color_id' => $color->id,
+                'name' => 'ABCDE',
+            ],
+        ]))->assertSee('Rp 32.000')->assertSee('data-unit-price="32000"', false);
+
+        foreach ([['ABCD', 1], ['ABCDE', 2]] as [$name, $quantity]) {
+            $this->post(route('checkout.custom.store', $product->slug), [
+                'customer_name' => 'Nadia Putri',
+                'customer_phone' => '081234567890',
+                'shipping_address' => 'Jl. Melati 12, Bandung',
+                'quantity' => $quantity,
+                'customization' => [
+                    'name' => $name,
+                    'base_color_id' => $color->id,
+                    'button_color_id' => $color->id,
+                    'name_color_id' => $color->id,
+                ],
+            ])->assertRedirect();
+        }
+
+        $items = OrderItem::query()->orderBy('id')->get();
+
+        $this->assertSame(25000, $items[0]->unit_price);
+        $this->assertSame(25000, $items[0]->subtotal);
+        $this->assertSame(32000, $items[1]->unit_price);
+        $this->assertSame(64000, $items[1]->subtotal);
     }
 
     public function test_clicker_name_cannot_exceed_product_character_limit(): void
@@ -444,6 +505,7 @@ class StorefrontOrderTest extends TestCase
             'name' => 'Studio Clicker',
             'description' => 'Clicker personalisasi.',
             'price' => 99000,
+            'additional_character_price' => 7000,
             'is_active' => 1,
             'customization_type' => 'clicker',
             'name_max_length' => 7,
@@ -455,6 +517,7 @@ class StorefrontOrderTest extends TestCase
         $response->assertRedirect(route('admin.products.index'));
         $this->assertSame('clicker', $product->customization_type);
         $this->assertSame(7, $product->name_max_length);
+        $this->assertSame(7000, $product->additional_character_price);
         $this->assertCount(9, $product->componentVariants()->where('is_active', true)->get());
         $this->get(route('products.show', $product->slug))->assertOk()->assertSee('Nama pada tombol');
     }

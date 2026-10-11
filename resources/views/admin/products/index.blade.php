@@ -28,7 +28,14 @@
                             <span class="rounded-full bg-[#e8e4f4] px-2 py-1 text-[9px] font-bold text-[#65518d]">CLICKER</span>
                         @endif
                     </div>
-                    <p class="mt-1 text-xs text-[#77786f]">Rp {{ number_format($product->price, 0, ',', '.') }} · {{ $product->customization_type === 'clicker' ? $product->componentVariants->where('is_active', true)->count().' opsi komponen · nama maks '.$product->name_max_length.' karakter' : $product->variants->count().' varian' }} · {{ $product->model_format ? strtoupper($product->model_format) : 'Belum ada file 3D' }}</p>
+                    <p class="mt-1 text-xs text-[#77786f]">Rp {{ number_format($product->price, 0, ',', '.') }}
+                        @if ($product->customization_type === 'clicker')
+                            · tambahan Rp {{ number_format($product->additional_character_price, 0, ',', '.') }}/huruf mulai huruf ke-5 · {{ $product->componentVariants->where('is_active', true)->count() }} opsi komponen · nama maks {{ $product->name_max_length }} karakter
+                        @else
+                            · {{ $product->variants->count() }} varian
+                        @endif
+                        · {{ $product->model_format ? strtoupper($product->model_format) : 'Belum ada file 3D' }}
+                    </p>
                     <div class="mt-2 flex flex-wrap gap-2">
                         @if ($product->customization_type === 'clicker')
                             @foreach ($product->componentVariants->where('is_active', true) as $variant)

@@ -32,7 +32,13 @@
         <div class="lg:py-5">
             <p class="text-[10px] font-bold uppercase tracking-[.2em] text-[#879f32]">PRINTLAB / OBJECT {{ str_pad((string) $product->id, 2, '0', STR_PAD_LEFT) }}</p>
             <h1 class="mt-3 text-4xl font-semibold tracking-[-.04em] sm:text-5xl">{{ $product->name }}</h1>
-            <p class="mt-4 text-2xl font-bold">Rp {{ number_format($product->price, 0, ',', '.') }}</p>
+            @if ($product->customization_type === 'clicker')
+                <p class="mt-4 text-2xl font-bold">Harga awal Rp {{ number_format($product->price, 0, ',', '.') }}</p>
+                <p class="mt-1 text-xs text-[#77786f]">Untuk 1–4 huruf. Tambahan mulai huruf ke-5: Rp {{ number_format($product->additional_character_price, 0, ',', '.') }} per huruf.</p>
+                <p id="custom-price-estimate" class="mt-2 text-sm font-semibold text-[#53632c]" data-base-price="{{ $product->price }}" data-additional-character-price="{{ $product->additional_character_price }}" data-included-character-count="{{ \App\Models\Product::CLICKER_INCLUDED_CHARACTER_COUNT }}">Estimasi harga: Rp {{ number_format($product->price, 0, ',', '.') }}</p>
+            @else
+                <p class="mt-4 text-2xl font-bold">Rp {{ number_format($product->price, 0, ',', '.') }}</p>
+            @endif
             <p class="mt-5 max-w-xl text-sm leading-7 text-[#717269]">{{ $product->description }}</p>
             <div class="my-7 border-t border-black/10"></div>
 

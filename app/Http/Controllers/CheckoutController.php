@@ -120,6 +120,8 @@ class CheckoutController extends Controller
         }
 
         $customName = mb_substr((string) ($queryCustomization['name'] ?? ''), 0, $nameMaxLength);
+        $additionalCharacterCount = max(0, mb_strlen($customName) - Product::CLICKER_INCLUDED_CHARACTER_COUNT);
+        $unitPrice = $product->clickerUnitPriceForName($customName);
         $readyStocks = collect($selectedColors)
             ->map(fn ($option) => $option->productVariant)
             ->unique('id')
@@ -127,7 +129,7 @@ class CheckoutController extends Controller
             ->pluck('stock');
         $maxReadyQuantity = $readyStocks->isEmpty() ? 20 : min(20, (int) $readyStocks->min());
 
-        return view('storefront.custom-checkout', compact('product', 'options', 'selectedColors', 'customName', 'maxReadyQuantity', 'nameMaxLength'));
+        return view('storefront.custom-checkout', compact('product', 'options', 'selectedColors', 'customName', 'maxReadyQuantity', 'nameMaxLength', 'additionalCharacterCount', 'unitPrice'));
     }
 
     public function storeCustom(Request $request, Product $product): RedirectResponse
@@ -220,7 +222,8 @@ class CheckoutController extends Controller
             }
 
             $nameLength = mb_strlen($name);
-            $subtotal = $lockedProduct->price * $validated['quantity'];
+            $unitPrice = $lockedProduct->clickerUnitPriceForName($name);
+            $subtotal = $unitPrice * $validated['quantity'];
             $order = Order::query()->create([
                 'code' => '3DP-'.Str::upper(Str::random(10)),
                 'customer_name' => $validated['customer_name'],
@@ -236,7 +239,7 @@ class CheckoutController extends Controller
                 'color_name' => collect($snapshot)->map(fn (array $part, string $key) => ucfirst($key).': '.$part['color_name'])->implode(' · '),
                 'fulfillment_type' => $poLeadDays === [] ? 'ready' : 'po',
                 'quantity' => $validated['quantity'],
-                'unit_price' => $lockedProduct->price,
+                'unit_price' => $unitPrice,
                 'subtotal' => $subtotal,
                 'lead_days' => $poLeadDays === [] ? null : max($poLeadDays),
                 'customization' => ['name' => $name, 'name_length' => $nameLength, 'components' => $snapshot],

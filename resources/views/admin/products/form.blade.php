@@ -41,8 +41,13 @@
                 <textarea id="description" class="form-input" name="description" rows="3">{{ old('description', $product->description) }}</textarea>
             </div>
             <div>
-                <label for="price" class="mb-2 block text-xs font-bold">Harga (Rp)</label>
+                <label for="price" class="mb-2 block text-xs font-bold">Harga produk · Rp</label>
                 <input id="price" class="form-input" type="number" name="price" min="1000" value="{{ old('price', $product->price) }}" required>
+            </div>
+            <div data-clicker-settings>
+                <label for="additional_character_price" class="mb-2 block text-xs font-bold">Tambahan per huruf mulai huruf ke-5 · Rp</label>
+                <input id="additional_character_price" class="form-input" type="number" name="additional_character_price" min="0" value="{{ old('additional_character_price', $product->additional_character_price ?? 0) }}">
+                @error('additional_character_price')<p class="form-error">{{ $message }}</p>@enderror
             </div>
             <div class="flex items-center gap-3 pt-6">
                 <input type="hidden" name="is_active" value="0">
