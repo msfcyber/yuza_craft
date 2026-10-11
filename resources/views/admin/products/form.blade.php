@@ -21,7 +21,7 @@
                     <label for="customization_type" class="mb-2 block text-xs font-bold">Tipe konfigurasi produk</label>
                     <select id="customization_type" name="customization_type" class="form-input">
                         <option value="standard" @selected(old('customization_type', $product->customization_type ?? 'standard') === 'standard')>Produk standar · satu warna</option>
-                        <option value="clicker" @selected(old('customization_type', $product->customization_type ?? 'standard') === 'clicker')>Clicker · warna per komponen + nama custom</option>
+                        <option value="clicker" @selected(old('customization_type', $product->customization_type ?? 'standard') === 'clicker')>Clicker · 3 warna (base, button, name)</option>
                     </select>
                 </div>
                 <div data-clicker-settings>
@@ -69,12 +69,12 @@
         <section>
             <div>
                 <h2 class="text-base font-bold">Varian warna</h2>
-                <p class="mt-1 text-xs text-[#77786f]">Atur stok warna ready atau estimasi hari untuk PO. Warna di sini juga tersedia untuk komponen clicker.</p>
+                <p class="mt-1 text-xs text-[#77786f]">Atur ketersediaan warna atau estimasi hari untuk PO. Warna di sini juga tersedia untuk komponen clicker.</p>
             </div>
             <div class="mt-4 space-y-3">
                 @forelse ($colors as $color)
                     @php($variant = $product->variants->firstWhere('color_id', $color->id))
-                    <div class="grid gap-3 rounded-2xl bg-[#f6f5f0] p-4 sm:grid-cols-[1.2fr_1fr_1fr_1fr] sm:items-center">
+                    <div class="grid gap-3 rounded-2xl bg-[#f6f5f0] p-4 sm:grid-cols-[1.2fr_1fr_1fr] sm:items-center">
                         <div class="flex items-center gap-2">
                             <span class="size-5 rounded-full border border-black/10" style="background-color: {{ $color->hex_code }}"></span>
                             <span class="text-sm font-semibold">{{ $color->name }}</span>
@@ -87,10 +87,7 @@
                                 <option value="po" @selected(old('variants.'.$color->id.'.availability', $variant?->availability ?? 'po') === 'po')>Pre-order</option>
                             </select>
                         </div>
-                        <div>
-                            <label for="stock-{{ $color->id }}" class="mb-1 block text-[9px] font-bold uppercase text-[#77786f]">Stok ready</label>
-                            <input id="stock-{{ $color->id }}" type="number" min="0" name="variants[{{ $color->id }}][stock]" value="{{ old('variants.'.$color->id.'.stock', $variant?->stock ?? 0) }}" class="form-input !py-2 text-xs">
-                        </div>
+                        <input type="hidden" name="variants[{{ $color->id }}][stock]" value="{{ old('variants.'.$color->id.'.stock', $variant?->stock ?? 0) }}">
                         <div>
                             <label for="lead-days-{{ $color->id }}" class="mb-1 block text-[9px] font-bold uppercase text-[#77786f]">PO (hari)</label>
                             <input id="lead-days-{{ $color->id }}" type="number" min="1" max="365" name="variants[{{ $color->id }}][lead_days]" value="{{ old('variants.'.$color->id.'.lead_days', $variant?->lead_days ?? 14) }}" class="form-input !py-2 text-xs">
@@ -104,7 +101,7 @@
         <section class="rounded-2xl border border-black/5 bg-[#f7f6f2] p-5" data-clicker-settings>
             <div>
                 <h2 class="text-base font-bold">Pilihan warna komponen</h2>
-                <p class="mt-1 text-xs leading-5 text-[#77786f]">Pilih warna yang tersedia untuk base, tombol, dan tulisan. Ketersediaan serta stok mengikuti varian warna produk.</p>
+                <p class="mt-1 text-xs leading-5 text-[#77786f]">Pilih warna yang tersedia untuk base, tombol, dan tulisan. Ketersediaan mengikuti varian warna produk.</p>
             </div>
             <div class="mt-5 space-y-5">
                 @foreach (['base' => 'Base', 'button' => 'Tombol', 'name' => 'Tulisan nama'] as $componentKey => $componentLabel)
